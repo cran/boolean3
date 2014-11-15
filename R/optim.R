@@ -152,8 +152,7 @@ fit_optimx <- function(obj, start=start, ...)
                               value=-1*fit[mod,"value"],
                               iterations=fit[mod,"niter"],
                               conv=fit[mod,"convcode"],
-                              detail=fit)
-        
+                              detail=fit)        
     }
 
     result

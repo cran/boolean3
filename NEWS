@@ -1,4 +1,8 @@
 * Bug Fixes and Changes
+** 3.1.6
+
+   + Fixed a bug in predict() -- function not works as intended.
+   
 ** 3.1.5
 
    + Added working examples.

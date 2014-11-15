@@ -70,102 +70,107 @@
 boolprob <- function(obj, vars=NULL, newdata=NULL, k=50, conf.int=FALSE, n=100,
                      as.table=TRUE, scales=list(x=list(relation="free")),
                      between=list(x=1, y=1), xlab="x",
-                     ylab="Predicted probability", ...) {
-
-  ## Define data points at which predicted probabilities should be
-  ## calculated. If newdata is supplied, it is retained as-is (though placed
-  ## into a list).
-  newdata <- set_newdata(obj, vars, newdata, k)
-
-  ## Calculate the predicted probabilities for the covariate profiles defined
-  ## in newdata.
-  prob <- calc_prob(newdata, conf.int, n, obj)
-
-  ## Construct plot.
-  if (conf.int) {
-    plot <- xyplot(mean + min + max ~ x | coef, data=prob, type="l",
-                   lty=c(1,2,2), col=c("black", "red", "red"), xlab=xlab,
-                   scales=scales, ylab=ylab, as.table=as.table,
-                   between=between, ...)
-  }
-  else {
-    plot <- xyplot(pred ~ x | coef, data=prob, type="l", col="black",
-                   xlab=xlab, scales=scales, ylab=ylab, as.table=as.table,
-                   between=between, ...)
-  }
-  
-  probobj <- list(est=prob, coef.labels=obj$coef.labels,
-                  default.plot=plot)
-  class(probobj) <- c("boolprob", class(probobj))
-  probobj  
+                     ylab="Predicted probability", ...)
+{
+    
+    ## Define data points at which predicted probabilities should be
+    ## calculated. If newdata is supplied, it is retained as-is (though placed
+    ## into a list).
+    newdata <- set_newdata(obj, vars, newdata, k)
+    
+    ## Calculate the predicted probabilities for the covariate profiles defined
+    ## in newdata.
+    prob <- calc_prob(newdata, conf.int, n, obj)
+    
+    ## Construct plot.
+    if (conf.int) {
+        plot <- xyplot(mean + min + max ~ x | coef, data=prob, type="l",
+                       lty=c(1,2,2), col=c("black", "red", "red"), xlab=xlab,
+                       scales=scales, ylab=ylab, as.table=as.table,
+                       between=between, ...)
+    }
+    else {
+        plot <- xyplot(pred ~ x | coef, data=prob, type="l", col="black",
+                       xlab=xlab, scales=scales, ylab=ylab, as.table=as.table,
+                       between=between, ...)
+    }
+    
+    probobj <- list(est=prob, coef.labels=obj$coef.labels,
+                    default.plot=plot)
+    class(probobj) <- c("boolprob", class(probobj))
+    probobj  
 }
 
 ### ----------------------------------------------------------------------------
 ### Utilities
 ### ----------------------------------------------------------------------------
 
-calc_prob <- function(newdata, conf.int, n, obj) {
-  ## Calculate predicted probabilities.
-
-  do_work <- function(prob_fn) {
-    prob <- lapply(newdata, function(X) apply(X, 1, prob_fn))
-    prob <- lapply(names(prob), function (X) {
-      data.frame(pred=prob[[X]], x=newdata[[X]][,X], coef=X)
-    })
-    do.call(rbind, prob)    
-  }
-  
-  if (conf.int) {
-    sim_coef <- rmvnorm(n, mean=coef(obj)[,1], sigma=vcov(obj)[[1]])
-    prob <- lapply(1:n, function(X) {
-      obj$model.fit[[1]]$par <- sim_coef[X,]
-      do_work(make_prob(obj))
-    })
-    Y <- do.call(cbind, lapply(prob, function(x) x[,1]))
-    q <- t(apply(Y, 1, quantile, probs=c(0.025, 0.975)))
-    Y <- cbind(rowMeans(Y), q, prob[[1]][,c("x", "coef")])
-    names(Y) <- c("mean", "min", "max", "x", "coef")
-    prob <- Y
-  }
-  else {
-    ## Define predicted probability function.
-    prob <- do_work(make_prob(obj))
-  }  
-  prob    
+## Calculate predicted probabilities.
+calc_prob <- function(newdata, conf.int, n, obj)
+{    
+    do_work <- function(prob_fn) {
+        prob <- lapply(newdata, function(X) apply(X, 1, prob_fn))
+        prob <- lapply(names(prob), function (X) {
+            data.frame(pred=prob[[X]], x=newdata[[X]][,X], coef=X)
+        })
+        do.call(rbind, prob)    
+    }
+    
+    if (conf.int) {
+        sim_coef <- rmvnorm(n, mean=coef(obj)[,1], sigma=vcov(obj)[[1]])
+        
+        prob <- lapply(1:n,
+                       function(X)
+                       {
+                           obj$model.fit[[1]]$par <- sim_coef[X,]
+                           do_work(make_prob(obj))
+                       })
+        
+        Y <- do.call(cbind, lapply(prob, function(x) x[,1]))
+        q <- t(apply(Y, 1, quantile, probs=c(0.025, 0.975)))
+        Y <- cbind(rowMeans(Y), q, prob[[1]][,c("x", "coef")])
+        names(Y) <- c("mean", "min", "max", "x", "coef")
+        prob <- Y
+    }
+    else {
+        ## Define predicted probability function.
+        prob <- do_work(make_prob(obj))
+    }  
+    prob    
 }
 
-set_newdata <- function(obj, vars, newdata, k) {
-  ## Returns newdata matrix given the suppied obj, vars, and newdata.
-
-  ## either vars or newdata is required.
-  if (all(is.null(vars), is.null(newdata)))
-      stop("either 'vars' or 'newdata' must be supplied", .call=FALSE)
-  
-  ## Return newdata as is if specified by user.
-  if (!is.null(newdata)) {
-    if (!is.list(newdata) | !all(names(newdata) %in% obj$coef.labels))
-        stop("newdata must be a list of data.frames and the name of list items must correspond \n   to the variable being varied", .call=FALSE)
-    return(newdata)
-  }
-  
-  ## get index values of vars if names instead of indices are supplied.
-  if (is.character(vars))
-    vars <- match(vars, obj$coef.labels)
-
-  ## function to build sets of covariate profiles for specified variable.
-  ## var.idx is variable index identifying the variable to vary; the other
-  ## variables are defined in the calling environment.
-  build_profile <- function(var.idx) {
-    profiles <- matrix(mu, ncol=length(mu), nrow=k, byrow=TRUE)
-    profiles[,var.idx] <- seq(min(mm[,var.idx]), max(mm[,var.idx]), length=k)
-    profiles
-  }
-
-  mm  <- model.matrix(obj)
-  mu  <- colMeans(mm)
-  newdata <- Map(build_profile, vars)
-  names(newdata) <- obj$coef.labels[vars]
-  for (n in names(newdata))
-    colnames(newdata[[n]]) <- obj$coef.labels
-  newdata
+## Returns newdata matrix given the suppied obj, vars, and newdata.
+set_newdata <- function(obj, vars, newdata, k)
+{
+    ## either vars or newdata is required.
+    if (all(is.null(vars), is.null(newdata)))
+        stop("either 'vars' or 'newdata' must be supplied", .call=FALSE)
+    
+    ## Return newdata as is if specified by user.
+    if (!is.null(newdata)) {
+        if (!is.list(newdata) | !all(names(newdata) %in% obj$coef.labels))
+            stop("newdata must be a list of data.frames and the name of list items must correspond \n   to the variable being varied", .call=FALSE)
+        return(newdata)
+    }
+    
+    ## get index values of vars if names instead of indices are supplied.
+    if (is.character(vars))
+        vars <- match(vars, obj$coef.labels)
+    
+    ## function to build sets of covariate profiles for specified variable.
+    ## var.idx is variable index identifying the variable to vary; the other
+    ## variables are defined in the calling environment.
+    build_profile <- function(var.idx) {
+        profiles <- matrix(mu, ncol=length(mu), nrow=k, byrow=TRUE)
+        profiles[,var.idx] <- seq(min(mm[,var.idx]), max(mm[,var.idx]), length=k)
+        profiles
+    }
+    
+    mm  <- model.matrix(obj)
+    mu  <- colMeans(mm)
+    newdata <- Map(build_profile, vars)
+    names(newdata) <- obj$coef.labels[vars]
+    for (n in names(newdata))
+        colnames(newdata[[n]]) <- obj$coef.labels
+    newdata
 }
